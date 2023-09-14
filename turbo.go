@@ -25,6 +25,62 @@ const (
 	Sampling411  Sampling = C.TJSAMP_411
 )
 
+/**
+ * MCU block width (in pixels) for a given level of chrominance subsampling.
+ * MCU block sizes:
+ * - 8x8 for no subsampling or grayscale
+ * - 16x8 for 4:2:2
+ * - 8x16 for 4:4:0
+ * - 16x16 for 4:2:0
+ * - 32x8 for 4:1:1
+ */
+func (v Sampling) GetMCUWidth() int {
+	switch v {
+	case Sampling444:
+		return 8
+	case Sampling422:
+		return 16
+	case Sampling420:
+		return 16
+	case SamplingGray:
+		return 8
+	case Sampling440:
+		return 8
+	case Sampling411:
+		return 32
+	default:
+		return -1
+	}
+}
+
+/**
+ * MCU block height (in pixels) for a given level of chrominance subsampling.
+ * MCU block sizes:
+ * - 8x8 for no subsampling or grayscale
+ * - 16x8 for 4:2:2
+ * - 8x16 for 4:4:0
+ * - 16x16 for 4:2:0
+ * - 32x8 for 4:1:1
+ */
+func (v Sampling) GetMCUHeight() int {
+	switch v {
+	case Sampling444:
+		return 8
+	case Sampling422:
+		return 8
+	case Sampling420:
+		return 16
+	case SamplingGray:
+		return 8
+	case Sampling440:
+		return 16
+	case Sampling411:
+		return 8
+	default:
+		return -1
+	}
+}
+
 type PixelFormat C.int
 
 const (
@@ -210,8 +266,8 @@ func Transform(jpegBytes []byte, x, y, w, h int, jpegSampling Sampling, flags Fl
 	defer C.tjDestroy(decoder)
 
 	// 坐标与16对齐
-	alignX := alignRound(x, int(C.tjMCUWidth[jpegSampling]))
-	alignY := alignRound(y, int(C.tjMCUHeight[jpegSampling]))
+	alignX := alignRound(x, jpegSampling.GetMCUWidth())
+	alignY := alignRound(y, jpegSampling.GetMCUHeight())
 	fixedW := w + (x - alignX)
 	fixedH := h + (y - alignY)
 
