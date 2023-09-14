@@ -21,6 +21,8 @@ const (
 	Sampling422  Sampling = C.TJSAMP_422
 	Sampling420  Sampling = C.TJSAMP_420
 	SamplingGray Sampling = C.TJSAMP_GRAY
+	Sampling440  Sampling = C.TJSAMP_440
+	Sampling411  Sampling = C.TJSAMP_411
 )
 
 type PixelFormat C.int
@@ -202,14 +204,14 @@ func alignRound(value, base int) int {
 }
 
 // JPEG image CROP using TurboJPEG
-func Transform(jpegBytes []byte, x, y, w, h int, flags Flags) ([]byte, error) {
+func Transform(jpegBytes []byte, x, y, w, h int, jpegSampling Sampling, flags Flags) ([]byte, error) {
 	// 初始化句柄
 	decoder := C.tjInitTransform()
 	defer C.tjDestroy(decoder)
 
 	// 坐标与16对齐
-	alignX := alignRound(x, 16)
-	alignY := alignRound(y, 16)
+	alignX := alignRound(x, int(C.tjMCUWidth[jpegSampling]))
+	alignY := alignRound(y, int(C.tjMCUHeight[jpegSampling]))
 	fixedW := w + (x - alignX)
 	fixedH := h + (y - alignY)
 
