@@ -210,8 +210,8 @@ func Transform(jpegBytes []byte, x, y, w, h int, flags Flags) ([]byte, error) {
 	// 坐标与16对齐
 	alignX := alignRound(x, 16)
 	alignY := alignRound(y, 16)
-	fixedW := w - (alignX - x)
-	fixedH := h - (alignY - y)
+	fixedW := w + (x - alignX)
+	fixedH := h + (y - alignY)
 
 	// 裁剪参数
 	var xform C.tjtransform
