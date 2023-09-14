@@ -260,3 +260,32 @@ func (img *Image) Clone() *Image {
 func (img *Image) NChan() int {
 	return NChan(img.Format)
 }
+
+// ResizeNew 缩放图像
+func (img *Image) ResizeNew(w, h int) *Image {
+	return ResizeNew(img, w, h)
+}
+
+// ChannelSpliter 图像通道分离
+func (img *Image) ChannelSpliter() []byte {
+	// 提取颜色通道数
+	channelNum := img.NChan()
+	// 单色通道大小
+	channelSize := img.Width * img.Height
+	// 图像大小
+	imgSize := channelSize * channelNum
+	// 声明目标图像空间
+	dstBytes := make([]byte, imgSize)
+	// 开始拷贝
+	for pix := 0; pix < channelSize; pix++ {
+		// pix: 表示第几个像素
+		for c := 0; c < channelNum; c++ {
+			// c: 表示第几个颜色通道
+			// pix*channelNum+c: 表示第pix个像素第c个通道的位置
+			// c*channelSize+pix: 表示第c个通道第pix像素的通道颜色
+			dstBytes[c*channelSize+pix] = img.Pixels[pix*channelNum+c]
+		}
+	}
+	// OK
+	return dstBytes
+}
