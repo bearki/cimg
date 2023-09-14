@@ -3,7 +3,6 @@ package cimg
 import (
 	"bytes"
 	"image/png"
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -11,7 +10,7 @@ import (
 )
 
 func MakeRGBA(width, height int) *Image {
-	img := NewImage(width, height, 4)
+	img := NewImage(width, height, PixelFormatRGBA)
 	buf := img.Pixels
 	g := byte(0)
 	b := byte(0)
@@ -34,7 +33,7 @@ func MakeRGBA(width, height int) *Image {
 }
 
 func MakeRGB(width, height int) *Image {
-	img := NewImage(width, height, 3)
+	img := NewImage(width, height, PixelFormatRGB)
 	buf := img.Pixels
 	g := byte(0)
 	b := byte(0)
@@ -55,7 +54,7 @@ func MakeRGB(width, height int) *Image {
 }
 
 func MakeGray(width, height int) *Image {
-	img := NewImage(width, height, 1)
+	img := NewImage(width, height, PixelFormatGRAY)
 	buf := img.Pixels
 	g := byte(0)
 	p := 0
@@ -81,6 +80,18 @@ func MakeImage(nchan, width, height int) *Image {
 	}
 }
 
+func AddAlphaNoise(img *Image) {
+	for y := 0; y < img.Height; y++ {
+		line := img.Stride * y
+		a := uint8(y)
+		for x := 0; x < img.Width; x++ {
+			img.Pixels[line+3] = a
+			a += 3
+			line += 4
+		}
+	}
+}
+
 func intAbs(v int) int {
 	if v < 0 {
 		return -v
@@ -95,12 +106,12 @@ func AvgRGBDifference(img1, img2 *Image) float64 {
 	dr := 0
 	dg := 0
 	db := 0
-	isGray := img1.NChan == 1
+	isGray := img1.NChan() == 1
 	for y := 0; y < img1.Height; y++ {
 		p1 := y * img1.Stride
 		p2 := y * img2.Stride
-		inc1 := img1.NChan
-		inc2 := img2.NChan
+		inc1 := img1.NChan()
+		inc2 := img2.NChan()
 		for x := 0; x < img1.Width; x++ {
 			r := intAbs(int(img1.Pixels[p1]) - int(img2.Pixels[p2]))
 			g := 0
@@ -121,13 +132,9 @@ func AvgRGBDifference(img1, img2 *Image) float64 {
 }
 
 func SaveJPEG(t *testing.T, img *Image, filename string) {
-	format := PixelFormatRGBA
-	if img.NChan == 3 {
-		format = PixelFormatRGB
-	}
-	enc, err := Compress(img, MakeCompressParams(format, Sampling444, 95, 0))
+	enc, err := Compress(img, MakeCompressParams(Sampling444, 95, 0))
 	require.Equal(t, err, nil)
-	ioutil.WriteFile(filename, enc, 0660)
+	os.WriteFile(filename, enc, 0660)
 }
 
 func TestCompress(t *testing.T) {
@@ -135,19 +142,15 @@ func TestCompress(t *testing.T) {
 	h := 200
 	for nchan := 3; nchan <= 4; nchan++ {
 		raw1 := MakeImage(nchan, w, h)
-		pixelFormat := PixelFormatRGBA
-		if nchan == 3 {
-			pixelFormat = PixelFormatRGB
-		}
-		params := MakeCompressParams(pixelFormat, Sampling444, 90, 0)
+		params := MakeCompressParams(Sampling444, 90, 0)
 		jpg, err := Compress(raw1, params)
 		t.Logf("Encode return: %v, %v", len(jpg), err)
-		raw2, err := Decompress(jpg)
+		raw2, err := Decompress(jpg, PixelFormatRGB)
 		t.Logf("Decode return: %v x %v, %v, %v, %v", raw2.Width, raw2.Height, raw2.Stride, len(raw2.Pixels), err)
 		require.Equal(t, &w, &raw2.Width, "Width same")
 		require.Equal(t, &h, &raw2.Height, "Height same")
 		require.Equal(t, w*3, raw2.Stride, "Stride")
-		//ioutil.WriteFile("test.jpg", jpg, 0660)
+		//os.WriteFile("test.jpg", jpg, 0660)
 	}
 }
 
@@ -179,16 +182,54 @@ func TestPNGLoad(t *testing.T) {
 	chans := []int{1, 3, 4}
 	for _, nchan := range chans {
 		org := MakeImage(nchan, 200, 100)
-		nat := org.ToImage()
-		buf := bytes.Buffer{}
-		err := png.Encode(&buf, nat)
+		nat, err := org.ToImage()
 		require.Nil(t, err)
-		v2, err := Decompress(buf.Bytes())
+		buf := bytes.Buffer{}
+		err = png.Encode(&buf, nat)
+		require.Nil(t, err)
+		v2, err := Decompress(buf.Bytes(), PixelFormatRGB)
 		require.Nil(t, err)
 		// require.Equal(t, org.NChan, v2.NChan) -- not true, because Go PNG lib opens RGB images as RGBA
 		diff := AvgRGBDifference(org, v2)
 		require.Equal(t, 0.0, diff)
 	}
+}
+
+// This was a bug, but it went away when I added explicit PixelFormat into Image
+//func TestPNGBad(t *testing.T) {
+//	raw, _ := os.ReadFile("/home/ben/Downloads/ptguiviewer_icon.png")
+//	img, err := Decompress(raw)
+//	require.Nil(t, err)
+//	img.Matte(255, 255, 255)
+//	j, _ := Compress(img, MakeCompressParams(Sampling444, 95, 0))
+//	os.WriteFile("test/foo.jpg", j, 0666)
+//}
+
+func TestMatte(t *testing.T) {
+	rgba := MakeImage(4, 200, 200)
+	AddAlphaNoise(rgba)
+	SaveJPEG(t, rgba, "test/alpha1.jpg")
+
+	white := rgba.Clone()
+	white.Matte(255, 255, 255)
+	SaveJPEG(t, white, "test/alphaWhiteMatte.jpg")
+
+	black := rgba.Clone()
+	black.Matte(0, 0, 0)
+	SaveJPEG(t, black, "test/alphaBlackMatte.jpg")
+
+	green := rgba.Clone()
+	green.Matte(0, 255, 0)
+	SaveJPEG(t, green, "test/alphaGreenMatteGoodPremul.jpg")
+
+	green = rgba.Clone()
+	green.Premultiplied = true // This is a lie
+	green.Matte(0, 255, 0)
+	SaveJPEG(t, green, "test/alphaGreenMatteBadPremul.jpg")
+
+	// invalid on RGB
+	rgb := MakeImage(3, 200, 200)
+	rgb.Matte(0, 255, 0)
 }
 
 func TestToRGB(t *testing.T) {
@@ -200,7 +241,7 @@ func TestToRGB(t *testing.T) {
 
 // Read EXIF data from a known good JPEG file
 func TestReadExif(t *testing.T) {
-	enc, err := ioutil.ReadFile("test/rotated270.jpg")
+	enc, err := os.ReadFile("test/rotated270.jpg")
 	require.Nil(t, err)
 	exif, err := LoadExif(enc)
 	require.Nil(t, err)
@@ -212,7 +253,7 @@ func TestReadExif(t *testing.T) {
 func TestReadModifyWriteExif(t *testing.T) {
 	// Test a JPEG with no EXIF data
 	raw1 := MakeRGBA(20, 20)
-	params := MakeCompressParams(PixelFormatRGBA, Sampling444, 90, 0)
+	params := MakeCompressParams(Sampling444, 90, 0)
 	jpg, err := Compress(raw1, params)
 	require.Nil(t, err)
 	jpgExif, err := LoadExif(jpg)
@@ -253,7 +294,7 @@ func TestReadModifyWriteExif(t *testing.T) {
 func LoadJPEG(t *testing.T, filename string) (img *Image, exifOrientation int) {
 	buf, err := os.ReadFile(filename)
 	require.Nil(t, err)
-	img, err = Decompress(buf)
+	img, err = Decompress(buf, PixelFormatRGB)
 	require.Nil(t, err)
 	exif, err := LoadExif(buf)
 	require.Nil(t, err)
