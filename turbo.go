@@ -190,18 +190,35 @@ func Decompress(encoded []byte, outFormat PixelFormat) (*Image, error) {
 	return img, nil
 }
 
+func alignFloor(value, base int) int {
+	return ((value) & ^((base) - 1))
+}
+func alignCeil(value, base int) int {
+	return alignFloor((value)+((base)-1), base)
+}
+
+func alignRound(value, base int) int {
+	return alignFloor((value)+((base)/2), base)
+}
+
 // JPEG image CROP using TurboJPEG
-func Transform(jpegBytes []byte, minX, minY, maxX, maxY int, flags Flags) ([]byte, error) {
+func Transform(jpegBytes []byte, x, y, w, h int, flags Flags) ([]byte, error) {
 	// 初始化句柄
 	decoder := C.tjInitTransform()
 	defer C.tjDestroy(decoder)
 
+	// 坐标与16对齐
+	alignX := alignRound(x, 16)
+	alignY := alignRound(y, 16)
+	fixedW := w - (alignX - x)
+	fixedH := h - (alignY - y)
+
 	// 裁剪参数
 	var xform C.tjtransform
-	xform.r.x = C.int(minX)
-	xform.r.y = C.int(minY)
-	xform.r.w = C.int(maxX - minX)
-	xform.r.h = C.int(maxY - minY)
+	xform.r.x = C.int(alignX)
+	xform.r.y = C.int(alignY)
+	xform.r.w = C.int(fixedW)
+	xform.r.h = C.int(fixedH)
 	xform.options |= C.TJXOPT_CROP
 
 	// 声明输出参数
