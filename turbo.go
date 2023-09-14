@@ -92,8 +92,19 @@ func Compress(img *Image, params CompressParams) ([]byte, error) {
 
 	// int tjCompress2(tjhandle handle, const unsigned char *srcBuf, int width, int pitch, int height, int pixelFormat,
 	// unsigned char **jpegBuf, unsigned long *jpegSize, int jpegSubsamp, int jpegQual, int flags);
-	res := C.tjCompress2(encoder, (*C.uchar)(&img.Pixels[0]), C.int(img.Width), C.int(img.Stride), C.int(img.Height), C.int(img.Format),
-		&outBuf, &outBufSize, C.int(params.Sampling), C.int(params.Quality), C.int(params.Flags))
+	res := C.tjCompress2(
+		encoder,
+		(*C.uchar)(&img.Pixels[0]),
+		C.int(img.Width),
+		C.int(img.Stride),
+		C.int(img.Height),
+		C.int(img.Format),
+		&outBuf,
+		&outBufSize,
+		C.int(params.Sampling),
+		C.int(params.Quality),
+		C.int(params.Flags),
+	)
 
 	var enc []byte
 	err := makeError(encoder, res)
@@ -129,7 +140,18 @@ func Decompress(encoded []byte, outFormat PixelFormat) (*Image, error) {
 	sampling := C.int(0)
 	colorspace := C.int(0)
 
-	err := makeError(decoder, C.tjDecompressHeader3(decoder, (*C.uchar)(&encoded[0]), C.ulong(len(encoded)), &width, &height, &sampling, &colorspace))
+	err := makeError(
+		decoder,
+		C.tjDecompressHeader3(
+			decoder,
+			(*C.uchar)(&encoded[0]),
+			C.ulong(len(encoded)),
+			&width,
+			&height,
+			&sampling,
+			&colorspace,
+		),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +162,20 @@ func Decompress(encoded []byte, outFormat PixelFormat) (*Image, error) {
 
 	// int tjDecompress2(tjhandle handle, const unsigned char *jpegBuf, unsigned long jpegSize, unsigned char *dstBuf,
 	// int width, int pitch, int height, int pixelFormat, int flags);
-	err = makeError(decoder, C.tjDecompress2(decoder, (*C.uchar)(&encoded[0]), C.ulong(len(encoded)), (*C.uchar)(&outBuf[0]), width, stride, height, C.int(outFormat), 0))
+	err = makeError(
+		decoder,
+		C.tjDecompress2(
+			decoder,
+			(*C.uchar)(&encoded[0]),
+			C.ulong(len(encoded)),
+			(*C.uchar)(&outBuf[0]),
+			width,
+			stride,
+			height,
+			C.int(outFormat),
+			0,
+		),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -153,4 +188,50 @@ func Decompress(encoded []byte, outFormat PixelFormat) (*Image, error) {
 		Pixels: outBuf,
 	}
 	return img, nil
+}
+
+// JPEG image CROP using TurboJPEG
+func Transform(jpegBytes []byte, minX, minY, maxX, maxY int, flags Flags) ([]byte, error) {
+	// 初始化句柄
+	decoder := C.tjInitTransform()
+	defer C.tjDestroy(decoder)
+
+	// 裁剪参数
+	var xform C.tjtransform
+	xform.r.x = C.int(minX)
+	xform.r.y = C.int(minY)
+	xform.r.w = C.int(maxX - minX)
+	xform.r.h = C.int(maxY - minY)
+	xform.options |= C.TJXOPT_CROP
+
+	// 声明输出参数
+	var dstBuf *C.uchar
+	var outBufSize C.ulong
+	defer func() {
+		// 是否需要释放
+		if dstBuf != nil {
+			C.tjFree(dstBuf)
+		}
+	}()
+
+	// 执行裁剪
+	err := makeError(decoder, C.tjTransform(
+		decoder,
+		(*C.uchar)(&jpegBytes[0]),
+		C.ulong(len(jpegBytes)),
+		1,
+		&dstBuf,
+		&outBufSize,
+		&xform,
+		C.int(flags),
+	))
+	if err != nil {
+		return nil, err
+	}
+
+	// 提取裁剪图像
+	datImg := C.GoBytes(unsafe.Pointer(dstBuf), C.int(outBufSize))
+
+	// OK
+	return datImg, nil
 }
