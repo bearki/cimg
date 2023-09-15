@@ -248,22 +248,56 @@ func Decompress(encoded []byte, outFormat PixelFormat) (*Image, error) {
 	return img, nil
 }
 
+// 向下对齐
 func alignFloor(value, base int) int {
 	return ((value) & ^((base) - 1))
 }
+
+// 向上对齐
 func alignCeil(value, base int) int {
 	return alignFloor((value)+((base)-1), base)
 }
 
+// 半舍半入对齐
 func alignRound(value, base int) int {
 	return alignFloor((value)+((base)/2), base)
 }
 
 // JPEG image CROP using TurboJPEG
-func Transform(jpegBytes []byte, x, y, w, h int, jpegSampling Sampling, flags Flags) ([]byte, error) {
-	// 初始化句柄
-	decoder := C.tjInitTransform()
+func Transform(jpegBytes []byte, x, y, w, h int, flags Flags) ([]byte, error) {
+	// 初始化解压JPEG数据头的解码器
+	decoder := C.tjInitDecompress()
 	defer C.tjDestroy(decoder)
+
+	// JPEG图像信息
+	width := C.int(0)
+	height := C.int(0)
+	sampling := C.int(0)
+	colorspace := C.int(0)
+
+	// 执行JPEG图像信息头解析
+	err := makeError(
+		decoder,
+		C.tjDecompressHeader3(
+			decoder,
+			(*C.uchar)(&jpegBytes[0]),
+			C.ulong(len(jpegBytes)),
+			&width,
+			&height,
+			&sampling,
+			&colorspace,
+		),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// 转换类型
+	jpegSampling := Sampling(sampling)
+
+	// 初始化裁剪句柄
+	transformer := C.tjInitTransform()
+	defer C.tjDestroy(transformer)
 
 	// 坐标与16对齐
 	alignX := alignRound(x, jpegSampling.GetMCUWidth())
@@ -290,8 +324,8 @@ func Transform(jpegBytes []byte, x, y, w, h int, jpegSampling Sampling, flags Fl
 	}()
 
 	// 执行裁剪
-	err := makeError(decoder, C.tjTransform(
-		decoder,
+	err = makeError(transformer, C.tjTransform(
+		transformer,
 		(*C.uchar)(&jpegBytes[0]),
 		C.ulong(len(jpegBytes)),
 		1,
