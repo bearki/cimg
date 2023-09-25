@@ -16,7 +16,7 @@ of code in Go.
 ### Example: Compress/Decompress with TurboJPEG
 
 ```go
-import "github.com/bmharper/cimg"
+import "github.com/bearki/cimg"
 
 func compressImage(width, height int, rgb []byte) {
 	raw := cimg.Image{
@@ -37,7 +37,7 @@ func decompressImage(jpg []byte) (*Image, error) {
 ### Example: Read and Modify EXIF Orientation
 
 ```go
-import "github.com/bmharper/cimg"
+import "github.com/bearki/cimg"
 
 func inspectOrientation(jpgRaw []byte) {
 	// Parse JPEG/JFIF segments, and read EXIF Orientation tag
@@ -56,7 +56,7 @@ func inspectOrientation(jpgRaw []byte) {
 ### Example: Resize with stb_image_resize
 
 ```go
-import "github.com/bmharper/cimg"
+import "github.com/bearki/cimg"
 
 // Resize from bytes
 func resizeImage(srcWidth, srcHeight int, rgba []byte, dstWidth, dstHeight int) *cimg.Image {
